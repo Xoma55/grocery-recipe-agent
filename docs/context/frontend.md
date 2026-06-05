@@ -1,5 +1,7 @@
 # Frontend
 
+frontend/
+
 ## Architecture
 
 Feature-Sliced Design
