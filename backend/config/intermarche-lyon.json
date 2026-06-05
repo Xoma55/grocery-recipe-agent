@@ -1,0 +1,92 @@
+{
+    "pilot_id": "intermarche-lyon",
+    "store_name": "Intermarché Lyon Part-Dieu",
+    "locale": "fr-FR",
+    "currency": "EUR",
+    "valid_from": "2026-06-02",
+    "valid_to": "2026-06-16",
+    "assistant_name": "Le Compagnon de courses",
+    "default_servings": 4,
+    "branding": {
+        "primary_color": "#E2001A",
+        "logo_url": ""
+    },
+    "ui_labels": {
+        "chips": [
+            "Dessert",
+            "Plat principal",
+            "Soupe",
+            "Apéritif",
+            "Salade"
+        ],
+        "suggest_button": "Proposez-moi une recette",
+        "basket_title": "À ajouter à votre panier"
+    },
+    "events": [
+        {
+            "name": "Coupe du Monde 2026 — France-Sénégal (16 juin)",
+            "type": "sports",
+            "date_range": {
+                "from": "2026-06-11",
+                "to": "2026-06-16"
+            },
+            "angle": "apéritif et snacks à partager pour le match France-Sénégal du 16 juin au soir"
+        },
+        {
+            "name": "Début de la saison des barbecues",
+            "type": "seasonal",
+            "date_range": {
+                "from": "2026-06-02",
+                "to": "2026-06-16"
+            },
+            "angle": "grillades, salades fraîches et marinades pour les beaux jours"
+        }
+    ],
+    "promoted_skus": [
+        {
+            "sku_id": "FR-0001",
+            "name": "Saucisses de Toulouse (lot de 6)",
+            "category": "viande",
+            "price": 4.95,
+            "unit": "le lot",
+            "on_promo": true,
+            "pairing_hint": "parfait pour un barbecue"
+        },
+        {
+            "sku_id": "FR-0002",
+            "name": "Chips nature Pâturages 150g",
+            "category": "apéritif",
+            "price": 1.20,
+            "unit": "le paquet",
+            "on_promo": true,
+            "pairing_hint": "idéal pour un apéritif devant le match"
+        },
+        {
+            "sku_id": "FR-0003",
+            "name": "Tomates grappe",
+            "category": "légume",
+            "price": 2.49,
+            "unit": "le kg",
+            "on_promo": false,
+            "pairing_hint": "salades et grillades"
+        },
+        {
+            "sku_id": "FR-0004",
+            "name": "Fromage de chèvre frais",
+            "category": "fromage",
+            "price": 1.85,
+            "unit": "la pièce",
+            "on_promo": true,
+            "pairing_hint": "salades d'été et tartines"
+        },
+        {
+            "sku_id": "FR-0005",
+            "name": "Baguette tradition",
+            "category": "boulangerie",
+            "price": 1.10,
+            "unit": "la pièce",
+            "on_promo": false,
+            "pairing_hint": "accompagnement universel"
+        }
+    ]
+}

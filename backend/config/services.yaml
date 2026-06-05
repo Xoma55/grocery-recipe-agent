@@ -9,6 +9,8 @@
 parameters:
     openai.api_key: '%env(OPENAI_API_KEY)%'
     openai.model: '%env(OPENAI_MODEL)%'
+    pilot.default_config_path: 'backend/config/intermarche-lyon.json'
+    pilot.config_path: '%env(default:pilot.default_config_path:CONFIG_PATH)%'
 
 services:
     # default configuration for services in *this* file
@@ -27,3 +29,8 @@ services:
         arguments:
             $apiKey: '%openai.api_key%'
             $model: '%openai.model%'
+
+    App\Infrastructure\PilotConfiguration\PilotConfigurationService:
+        arguments:
+            $configPath: '%pilot.config_path%'
+            $projectDir: '%kernel.project_dir%'
