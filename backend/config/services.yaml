@@ -11,6 +11,8 @@ parameters:
     openai.model: '%env(OPENAI_MODEL)%'
     pilot.default_config_path: 'backend/config/intermarche-lyon.json'
     pilot.config_path: '%env(default:pilot.default_config_path:CONFIG_PATH)%'
+    prompt.default_base_prompt_path: 'backend/config/prompt.md'
+    prompt.base_prompt_path: '%env(default:prompt.default_base_prompt_path:SYSTEM_PROMPT_PATH)%'
 
 services:
     # default configuration for services in *this* file
@@ -33,4 +35,10 @@ services:
     App\Infrastructure\PilotConfiguration\PilotConfigurationService:
         arguments:
             $configPath: '%pilot.config_path%'
+            $projectDir: '%kernel.project_dir%'
+
+    App\Infrastructure\SystemPrompt\SystemPromptAssemblyService:
+        public: true
+        arguments:
+            $basePromptPath: '%prompt.base_prompt_path%'
             $projectDir: '%kernel.project_dir%'
