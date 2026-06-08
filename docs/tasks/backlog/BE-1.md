@@ -14,7 +14,7 @@ The application must expose a single API endpoint:
 
 At this stage, the endpoint should return a stubbed JSON response without calling the OpenAI API.
 
-Configuration values for the OpenAI integration must be loaded from environment variables defined in `.env.local`:
+Configuration values for the OpenAI integration must be loaded from environment variables defined in `.env`:
 
 * `OPENAI_API_KEY`
 * `OPENAI_MODEL`
@@ -41,8 +41,8 @@ The implementation should follow Symfony best practices and ensure that sensitiv
 
 ### Environment Configuration
 
-* `OPENAI_API_KEY` is read from `.env.local`.
-* `OPENAI_MODEL` is read from `.env.local`.
+* `OPENAI_API_KEY` is read from `.env`.
+* `OPENAI_MODEL` is read from `.env`.
 * Values are accessible through Symfony configuration or services.
 * No API keys or model names are hardcoded in the codebase.
 

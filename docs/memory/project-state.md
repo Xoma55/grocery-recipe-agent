@@ -3,7 +3,7 @@
 - Created a minimal Symfony backend skeleton under `backend/` with Composer.
 - Added `POST /api/chat`, returning `{"message":"Chat endpoint is ready"}` without OpenAI calls.
 - Added OpenAI env access through Symfony parameters and `App\Infrastructure\OpenAi\OpenAiConfiguration`.
-- Installed and configured `nelmio/cors-bundle` for `/api/` with `CORS_ALLOW_ORIGIN` from `.env.local`.
+- Installed and configured `nelmio/cors-bundle` for `/api/` with `CORS_ALLOW_ORIGIN` from `.env`.
 
 2026-06-05: BE-2 completed.
 
@@ -26,3 +26,14 @@
 - Added `SESSION_LIFETIME` configuration and reused the application `DATABASE_URL`; expiration is enforced on every request and expired records are deleted before replacement.
 - Added dependency-free automated coverage in `backend/tests/run.php`, runnable with `composer test`.
 - Added endpoint-level regression coverage proving an expired session cookie deletes the old database record before returning a replacement cookie.
+
+2026-06-08: BE-4 completed.
+
+- Extracted `/api/chat` request handling from `ChatController` into `App\UI\Chat\ChatRequestHandler`.
+- `ChatController` is now a thin HTTP controller that only delegates the request and returns the handler response.
+- Preserved existing message validation, session checks, OpenAI conversation resolution, prompt assembly, SSE streaming format, and error responses.
+
+2026-06-08: Environment override cleanup.
+
+- Removed project references to the local override env file; local backend configuration now uses `backend/.env` directly.
+- Confirmed the local override env file is absent and no references to it remain outside ignored vendor/cache/git paths.

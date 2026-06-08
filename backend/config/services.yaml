@@ -8,7 +8,10 @@
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
     openai.api_key: '%env(OPENAI_API_KEY)%'
-    openai.model: '%env(OPENAI_MODEL)%'
+    openai.default_model: 'gpt-4.1-mini'
+    openai.model: '%env(default:openai.default_model:OPENAI_MODEL)%'
+    openai.default_base_url: 'https://api.openai.com/v1'
+    openai.base_url: '%env(default:openai.default_base_url:OPENAI_BASE_URL)%'
     pilot.default_config_path: 'backend/config/intermarche-lyon.json'
     pilot.config_path: '%env(default:pilot.default_config_path:CONFIG_PATH)%'
     prompt.default_base_prompt_path: 'backend/config/prompt.md'
@@ -18,6 +21,7 @@ parameters:
     database.default_url: 'sqlite:///%kernel.project_dir%/var/app.sqlite'
     database.url: '%env(resolve:default:database.default_url:DATABASE_URL)%'
     session.migration_path: '%kernel.project_dir%/migrations/001_create_sessions.sql'
+    chat_conversation.migration_path: '%kernel.project_dir%/migrations/002_create_chat_conversations.sql'
 
 services:
     # default configuration for services in *this* file
@@ -36,6 +40,10 @@ services:
         arguments:
             $apiKey: '%openai.api_key%'
             $model: '%openai.model%'
+            $baseUrl: '%openai.base_url%'
+
+    App\Infrastructure\OpenAi\OpenAiClientInterface:
+        alias: App\Infrastructure\OpenAi\HttpOpenAiClient
 
     App\Infrastructure\PilotConfiguration\PilotConfigurationService:
         arguments:
@@ -56,3 +64,7 @@ services:
     App\Infrastructure\Session\SessionRepository:
         arguments:
             $migrationPath: '%session.migration_path%'
+
+    App\Infrastructure\Chat\ChatConversationRepository:
+        arguments:
+            $migrationPath: '%chat_conversation.migration_path%'
