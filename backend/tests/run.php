@@ -8,11 +8,15 @@ use App\Infrastructure\Session\SessionConfiguration;
 use App\Infrastructure\Session\SessionManager;
 use App\Infrastructure\Session\SessionRepository;
 use App\Infrastructure\Session\SqliteConnectionFactory;
+use App\Infrastructure\OpenAi\HttpOpenAiClient;
+use App\Infrastructure\OpenAi\OpenAiConfiguration;
 use App\Tests\Support\DummyKernel;
 use App\Tests\Support\MutableClock;
 use App\UI\EventSubscriber\DatabaseSessionSubscriber;
 use DateTimeImmutable;
 use DateTimeInterface;
+use InvalidArgumentException;
+use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -49,6 +53,39 @@ function assertTrueValue(bool $condition, string $message): void
     if (!$condition) {
         throw new RuntimeException($message);
     }
+}
+
+/**
+ * @param callable(): void $callback
+ */
+function assertThrows(string $expectedClass, callable $callback, string $message): void
+{
+    try {
+        $callback();
+    } catch (Throwable $exception) {
+        if ($exception instanceof $expectedClass) {
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            '%s Expected %s, got %s.',
+            $message,
+            $expectedClass,
+            $exception::class,
+        ));
+    }
+
+    throw new RuntimeException(sprintf('%s Expected %s to be thrown.', $message, $expectedClass));
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function streamingResponseBody(HttpOpenAiClient $client, string $conversationId, string $instructions, string $message): array
+{
+    $method = new ReflectionMethod(HttpOpenAiClient::class, 'streamingResponseBody');
+
+    return $method->invoke($client, $conversationId, $instructions, $message);
 }
 
 function repository(string $databasePath, int $lifetimeSeconds = 60): SessionRepository
@@ -204,4 +241,60 @@ test('session lifetime is read from environment-backed configuration value', fun
     $configuration = new SessionConfiguration((int) getenv('SESSION_LIFETIME'), 'sqlite:///:memory:');
 
     assertSameValue(45, $configuration->lifetimeSeconds, 'Configuration should expose SESSION_LIFETIME.');
+});
+
+test('OpenAI request configuration defaults are applied when omitted', function (): void {
+    $configuration = new OpenAiConfiguration('test-key', 'gpt-5.5', 'https://api.openai.com/v1');
+
+    assertSameValue('medium', $configuration->reasoningEffort, 'Default reasoning effort should be medium.');
+    assertSameValue('medium', $configuration->textVerbosity, 'Default text verbosity should be medium.');
+    assertSameValue(4000, $configuration->maxOutputTokens, 'Default max output tokens should be 4000.');
+});
+
+test('OpenAI request configuration accepts valid configured values', function (): void {
+    $configuration = new OpenAiConfiguration(
+        'test-key',
+        'gpt-5.5',
+        'https://api.openai.com/v1',
+        'high',
+        'low',
+        '1200',
+    );
+
+    assertSameValue('high', $configuration->reasoningEffort, 'Configured reasoning effort should be exposed.');
+    assertSameValue('low', $configuration->textVerbosity, 'Configured text verbosity should be exposed.');
+    assertSameValue(1200, $configuration->maxOutputTokens, 'Configured max output tokens should be exposed as an integer.');
+});
+
+test('OpenAI request configuration rejects invalid values clearly', function (): void {
+    assertThrows(InvalidArgumentException::class, function (): void {
+        new OpenAiConfiguration('test-key', 'gpt-5.5', 'https://api.openai.com/v1', 'extreme');
+    }, 'Invalid reasoning effort should fail configuration.');
+
+    assertThrows(InvalidArgumentException::class, function (): void {
+        new OpenAiConfiguration('test-key', 'gpt-5.5', 'https://api.openai.com/v1', 'medium', 'verbose');
+    }, 'Invalid text verbosity should fail configuration.');
+
+    assertThrows(InvalidArgumentException::class, function (): void {
+        new OpenAiConfiguration('test-key', 'gpt-5.5', 'https://api.openai.com/v1', 'medium', 'medium', '0');
+    }, 'Non-positive max output tokens should fail configuration.');
+});
+
+test('OpenAI Responses API request body includes configured GPT-5.5 parameters', function (): void {
+    $client = new HttpOpenAiClient(new OpenAiConfiguration(
+        'test-key',
+        'gpt-5.5',
+        'https://api.openai.com/v1',
+        'minimal',
+        'high',
+        900,
+    ));
+
+    $body = streamingResponseBody($client, 'conv_123', 'Instructions', 'Message');
+
+    assertSameValue('gpt-5.5', $body['model'] ?? null, 'Response body should include configured model.');
+    assertSameValue(['effort' => 'minimal'], $body['reasoning'] ?? null, 'Response body should include configured reasoning effort.');
+    assertSameValue(['verbosity' => 'high'], $body['text'] ?? null, 'Response body should include configured text verbosity.');
+    assertSameValue(900, $body['max_output_tokens'] ?? null, 'Response body should include configured max output tokens.');
+    assertSameValue(true, $body['stream'] ?? null, 'Response body should keep streaming enabled.');
 });

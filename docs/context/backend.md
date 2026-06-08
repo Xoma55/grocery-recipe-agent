@@ -49,6 +49,15 @@ UI:
 - Integration tests for repositories
 - Functional tests for API endpoints
 
+## OpenAI Configuration
+
+- `OPENAI_API_KEY`: OpenAI API key.
+- `OPENAI_MODEL`: Responses API model, defaults to `gpt-4.1-mini`.
+- `OPENAI_BASE_URL`: OpenAI API base URL, defaults to `https://api.openai.com/v1`.
+- `OPENAI_REASONING_EFFORT`: Responses API reasoning effort. Allowed values: `minimal`, `low`, `medium`, `high`. Defaults to `medium`.
+- `OPENAI_TEXT_VERBOSITY`: Responses API text verbosity. Allowed values: `low`, `medium`, `high`. Defaults to `medium`.
+- `OPENAI_MAX_OUTPUT_TOKENS`: Responses API max output tokens. Must be a positive integer. Defaults to `4000`.
+
 Persistence Rules
 - Doctrine is the only persistence layer.
 - Repositories encapsulate all database access.

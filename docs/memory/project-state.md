@@ -37,3 +37,11 @@
 
 - Removed project references to the local override env file; local backend configuration now uses `backend/.env` directly.
 - Confirmed the local override env file is absent and no references to it remain outside ignored vendor/cache/git paths.
+
+2026-06-08: BE-8 completed.
+
+- Added GPT-5.5 Responses API request configuration for `OPENAI_REASONING_EFFORT`, `OPENAI_TEXT_VERBOSITY`, and `OPENAI_MAX_OUTPUT_TOKENS`.
+- Values are loaded through Symfony parameters with defaults of `medium`, `medium`, and `4000`.
+- `OpenAiConfiguration` validates allowed reasoning effort, text verbosity, and positive integer max output tokens with clear fail-fast errors.
+- `/responses` request bodies now include configured `reasoning.effort`, `text.verbosity`, and `max_output_tokens` values.
+- Added regression coverage for defaults, valid configured values, invalid configuration failures, and generated Responses API payloads.

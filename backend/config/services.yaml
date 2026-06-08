@@ -12,6 +12,12 @@ parameters:
     openai.model: '%env(default:openai.default_model:OPENAI_MODEL)%'
     openai.default_base_url: 'https://api.openai.com/v1'
     openai.base_url: '%env(default:openai.default_base_url:OPENAI_BASE_URL)%'
+    openai.default_reasoning_effort: 'medium'
+    openai.reasoning_effort: '%env(default:openai.default_reasoning_effort:OPENAI_REASONING_EFFORT)%'
+    openai.default_text_verbosity: 'medium'
+    openai.text_verbosity: '%env(default:openai.default_text_verbosity:OPENAI_TEXT_VERBOSITY)%'
+    openai.default_max_output_tokens: '4000'
+    openai.max_output_tokens: '%env(default:openai.default_max_output_tokens:OPENAI_MAX_OUTPUT_TOKENS)%'
     pilot.default_config_path: 'backend/config/intermarche-lyon.json'
     pilot.config_path: '%env(default:pilot.default_config_path:CONFIG_PATH)%'
     prompt.default_base_prompt_path: 'backend/config/prompt.md'
@@ -41,6 +47,9 @@ services:
             $apiKey: '%openai.api_key%'
             $model: '%openai.model%'
             $baseUrl: '%openai.base_url%'
+            $reasoningEffort: '%openai.reasoning_effort%'
+            $textVerbosity: '%openai.text_verbosity%'
+            $maxOutputTokens: '%openai.max_output_tokens%'
 
     App\Infrastructure\OpenAi\OpenAiClientInterface:
         alias: App\Infrastructure\OpenAi\HttpOpenAiClient

@@ -25,10 +25,27 @@ final readonly class HttpOpenAiClient implements OpenAiClientInterface
 
     public function createStreamingResponse(string $conversationId, string $instructions, string $message): OpenAiResponseStream
     {
-        $body = [
+        $stream = $this->openStream('/responses', $this->streamingResponseBody($conversationId, $instructions, $message));
+
+        return new OpenAiResponseStream($stream);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function streamingResponseBody(string $conversationId, string $instructions, string $message): array
+    {
+        return [
             'model' => $this->configuration->model,
             'conversation' => $conversationId,
             'instructions' => $instructions,
+            'reasoning' => [
+                'effort' => $this->configuration->reasoningEffort,
+            ],
+            'text' => [
+                'verbosity' => $this->configuration->textVerbosity,
+            ],
+            'max_output_tokens' => $this->configuration->maxOutputTokens,
             'input' => [
                 [
                     'role' => 'user',
@@ -45,10 +62,6 @@ final readonly class HttpOpenAiClient implements OpenAiClientInterface
                 'include_obfuscation' => false,
             ],
         ];
-
-        $stream = $this->openStream('/responses', $body);
-
-        return new OpenAiResponseStream($stream);
     }
 
     /**
