@@ -18,3 +18,10 @@
 - The service reads `SYSTEM_PROMPT_PATH`, loads `backend/config/prompt.md`, and replaces `{{ASSISTANT_NAME}}`, `{{STORE_NAME}}`, `{{EVENT_CONTEXT}}`, `{{PROMOTED_SKUS}}`, and `{{DEFAULT_SERVINGS}}`.
 - Prompt values come from `PilotConfigurationService`; events and promoted SKUs are inserted as pretty JSON for AI-readable structured context.
 - Registered the service in Symfony DI as public for direct resolution and added the default `SYSTEM_PROMPT_PATH=backend/config/prompt.md` env value.
+
+2026-06-08: BE-7 completed.
+
+- Added database-backed anonymous session management for every main HTTP request via `DatabaseSessionSubscriber`.
+- Sessions are stored in SQLite using the `sessions` table from `backend/migrations/001_create_sessions.sql`.
+- Added `SESSION_LIFETIME` configuration and reused the application `DATABASE_URL`; expiration is enforced on every request and expired records are deleted before replacement.
+- Added dependency-free automated coverage in `backend/tests/run.php`, runnable with `composer test`.

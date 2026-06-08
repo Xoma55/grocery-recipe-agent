@@ -13,6 +13,11 @@ parameters:
     pilot.config_path: '%env(default:pilot.default_config_path:CONFIG_PATH)%'
     prompt.default_base_prompt_path: 'backend/config/prompt.md'
     prompt.base_prompt_path: '%env(default:prompt.default_base_prompt_path:SYSTEM_PROMPT_PATH)%'
+    session.default_lifetime: 3600
+    session.lifetime: '%env(int:default:session.default_lifetime:SESSION_LIFETIME)%'
+    database.default_url: 'sqlite:///%kernel.project_dir%/var/app.sqlite'
+    database.url: '%env(resolve:default:database.default_url:DATABASE_URL)%'
+    session.migration_path: '%kernel.project_dir%/migrations/001_create_sessions.sql'
 
 services:
     # default configuration for services in *this* file
@@ -42,3 +47,12 @@ services:
         arguments:
             $basePromptPath: '%prompt.base_prompt_path%'
             $projectDir: '%kernel.project_dir%'
+
+    App\Infrastructure\Session\SessionConfiguration:
+        arguments:
+            $lifetimeSeconds: '%session.lifetime%'
+            $databaseUrl: '%database.url%'
+
+    App\Infrastructure\Session\SessionRepository:
+        arguments:
+            $migrationPath: '%session.migration_path%'
