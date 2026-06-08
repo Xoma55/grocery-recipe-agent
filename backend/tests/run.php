@@ -155,6 +155,42 @@ test('expired session is detected, removed, and replaced', function (): void {
     assertSameValue(1, count($sessionRepository->all()), 'Only the replacement session should remain.');
 });
 
+test('request with expired session cookie deletes old record and returns replacement cookie', function (): void {
+    $databasePath = tempDatabasePath();
+    $clock = new MutableClock(new DateTimeImmutable('2026-06-08T10:00:00+00:00'));
+    $configuration = new SessionConfiguration(10, 'sqlite:///' . $databasePath);
+    $sessionManager = new SessionManager(
+        new SessionRepository(
+            new SqliteConnectionFactory($configuration),
+            dirname(__DIR__) . '/migrations/001_create_sessions.sql',
+        ),
+        $configuration,
+        $clock,
+    );
+    $subscriber = new DatabaseSessionSubscriber($sessionManager);
+    $kernel = new DummyKernel();
+
+    $expired = $sessionManager->resolve(null);
+    $clock->advance(11);
+    $request = Request::create('/api/chat', 'POST', [], [
+        DatabaseSessionSubscriber::COOKIE_NAME => $expired->id,
+    ]);
+
+    $subscriber->onKernelRequest(new RequestEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST));
+    $response = new Response();
+    $subscriber->onKernelResponse(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+
+    $sessionRepository = repository($databasePath);
+    $sessions = $sessionRepository->all();
+    $cookie = $response->headers->getCookies()[0] ?? null;
+
+    assertSameValue(null, $sessionRepository->find($expired->id), 'Expired cookie session should be deleted during request handling.');
+    assertSameValue(1, count($sessions), 'Expired request should leave only the replacement session.');
+    assertTrueValue($cookie !== null, 'Response should include the replacement session cookie.');
+    assertTrueValue($cookie->getValue() !== $expired->id, 'Replacement cookie must not reuse the expired session id.');
+    assertSameValue($sessions[0]->id, $cookie->getValue(), 'Replacement cookie should point to the stored replacement session.');
+});
+
 test('missing session id creates a new session', function (): void {
     $databasePath = tempDatabasePath();
     $clock = new MutableClock(new DateTimeImmutable('2026-06-08T10:00:00+00:00'));

@@ -25,3 +25,4 @@
 - Sessions are stored in SQLite using the `sessions` table from `backend/migrations/001_create_sessions.sql`.
 - Added `SESSION_LIFETIME` configuration and reused the application `DATABASE_URL`; expiration is enforced on every request and expired records are deleted before replacement.
 - Added dependency-free automated coverage in `backend/tests/run.php`, runnable with `composer test`.
+- Added endpoint-level regression coverage proving an expired session cookie deletes the old database record before returning a replacement cookie.
