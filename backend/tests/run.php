@@ -8,14 +8,21 @@ use App\Infrastructure\Session\SessionConfiguration;
 use App\Infrastructure\Session\SessionManager;
 use App\Infrastructure\Session\SessionRepository;
 use App\Infrastructure\Session\SqliteConnectionFactory;
+use App\Infrastructure\Chat\ChatConversationRepository;
+use App\Infrastructure\OpenAi\OpenAiConversationMessage;
 use App\Infrastructure\OpenAi\HttpOpenAiClient;
 use App\Infrastructure\OpenAi\OpenAiConfiguration;
+use App\Infrastructure\OpenAi\OpenAiUpstreamException;
+use App\Infrastructure\Session\SessionRecord;
 use App\Tests\Support\DummyKernel;
+use App\Tests\Support\FakeOpenAiClient;
 use App\Tests\Support\MutableClock;
+use App\UI\Chat\ChatHistoryRequestHandler;
 use App\UI\EventSubscriber\DatabaseSessionSubscriber;
 use DateTimeImmutable;
 use DateTimeInterface;
 use InvalidArgumentException;
+use Psr\Log\NullLogger;
 use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Request;
@@ -109,6 +116,16 @@ function manager(string $databasePath, MutableClock $clock, int $lifetimeSeconds
         ),
         $configuration,
         $clock,
+    );
+}
+
+function chatConversationRepository(string $databasePath): ChatConversationRepository
+{
+    $configuration = new SessionConfiguration(60, 'sqlite:///' . $databasePath);
+
+    return new ChatConversationRepository(
+        new SqliteConnectionFactory($configuration),
+        dirname(__DIR__) . '/migrations/002_create_chat_conversations.sql',
     );
 }
 
@@ -241,6 +258,126 @@ test('session lifetime is read from environment-backed configuration value', fun
     $configuration = new SessionConfiguration((int) getenv('SESSION_LIFETIME'), 'sqlite:///:memory:');
 
     assertSameValue(45, $configuration->lifetimeSeconds, 'Configuration should expose SESSION_LIFETIME.');
+});
+
+test('chat history returns an empty message list when the session has no conversation mapping', function (): void {
+    $databasePath = tempDatabasePath();
+    $repository = chatConversationRepository($databasePath);
+    $openAiClient = new FakeOpenAiClient();
+    $handler = new ChatHistoryRequestHandler($repository, $openAiClient, new NullLogger());
+    $request = Request::create('/api/chat/history', 'GET');
+    $request->attributes->set(
+        DatabaseSessionSubscriber::REQUEST_ATTRIBUTE,
+        new SessionRecord(
+            'session-without-conversation',
+            new DateTimeImmutable('2026-06-08T10:00:00+00:00'),
+            new DateTimeImmutable('2026-06-08T11:00:00+00:00'),
+        ),
+    );
+
+    $response = $handler->handle($request);
+    $payload = json_decode((string) $response->getContent(), true);
+
+    assertSameValue(200, $response->getStatusCode(), 'Missing conversation mapping should be a successful empty history response.');
+    assertSameValue(['messages' => []], $payload, 'Missing conversation mapping should return no messages.');
+    assertSameValue([], $openAiClient->listedConversationIds, 'Missing conversation mapping must not call OpenAI.');
+});
+
+test('chat history loads messages using the conversation id mapped to the current session', function (): void {
+    $databasePath = tempDatabasePath();
+    $repository = chatConversationRepository($databasePath);
+    $repository->save('session-a', 'conv_a', new DateTimeImmutable('2026-06-08T10:00:00+00:00'));
+    $openAiClient = new FakeOpenAiClient([
+        'conv_a' => [
+            new OpenAiConversationMessage('user', 'Bonjour'),
+            new OpenAiConversationMessage('assistant', 'Bonjour, que souhaitez-vous cuisiner ce soir ?'),
+        ],
+    ]);
+    $handler = new ChatHistoryRequestHandler($repository, $openAiClient, new NullLogger());
+    $request = Request::create('/api/chat/history', 'GET');
+    $request->attributes->set(
+        DatabaseSessionSubscriber::REQUEST_ATTRIBUTE,
+        new SessionRecord(
+            'session-a',
+            new DateTimeImmutable('2026-06-08T10:00:00+00:00'),
+            new DateTimeImmutable('2026-06-08T11:00:00+00:00'),
+        ),
+    );
+
+    $response = $handler->handle($request);
+    $payload = json_decode((string) $response->getContent(), true);
+
+    assertSameValue(200, $response->getStatusCode(), 'Existing conversation history should return success.');
+    assertSameValue(['conv_a'], $openAiClient->listedConversationIds, 'History should be loaded from the mapped conversation id.');
+    assertSameValue([
+        'messages' => [
+            ['role' => 'user', 'content' => 'Bonjour'],
+            ['role' => 'assistant', 'content' => 'Bonjour, que souhaitez-vous cuisiner ce soir ?'],
+        ],
+    ], $payload, 'History response should expose frontend-usable messages.');
+});
+
+test('chat history ignores client-provided conversation id and isolates sessions', function (): void {
+    $databasePath = tempDatabasePath();
+    $repository = chatConversationRepository($databasePath);
+    $now = new DateTimeImmutable('2026-06-08T10:00:00+00:00');
+    $repository->save('session-a', 'conv_a', $now);
+    $repository->save('session-b', 'conv_b', $now);
+    $openAiClient = new FakeOpenAiClient([
+        'conv_a' => [
+            new OpenAiConversationMessage('assistant', 'Wrong session'),
+        ],
+        'conv_b' => [
+            new OpenAiConversationMessage('assistant', 'Right session'),
+        ],
+    ]);
+    $handler = new ChatHistoryRequestHandler($repository, $openAiClient, new NullLogger());
+    $request = Request::create('/api/chat/history?conversation_id=conv_a', 'GET', [
+        'conversation_id' => 'conv_a',
+    ], [], [], [
+        'HTTP_X_CONVERSATION_ID' => 'conv_a',
+    ]);
+    $request->attributes->set(
+        DatabaseSessionSubscriber::REQUEST_ATTRIBUTE,
+        new SessionRecord(
+            'session-b',
+            $now,
+            new DateTimeImmutable('2026-06-08T11:00:00+00:00'),
+        ),
+    );
+
+    $response = $handler->handle($request);
+    $payload = json_decode((string) $response->getContent(), true);
+
+    assertSameValue(['conv_b'], $openAiClient->listedConversationIds, 'History must use the current session mapping, not client input.');
+    assertSameValue([
+        'messages' => [
+            ['role' => 'assistant', 'content' => 'Right session'],
+        ],
+    ], $payload, 'History must not expose another session conversation.');
+});
+
+test('chat history returns upstream status when OpenAI history loading fails', function (): void {
+    $databasePath = tempDatabasePath();
+    $repository = chatConversationRepository($databasePath);
+    $repository->save('session-a', 'conv_a', new DateTimeImmutable('2026-06-08T10:00:00+00:00'));
+    $openAiClient = new FakeOpenAiClient([], new OpenAiUpstreamException('OpenAI failed.', 503, 500, 'upstream details'));
+    $handler = new ChatHistoryRequestHandler($repository, $openAiClient, new NullLogger());
+    $request = Request::create('/api/chat/history', 'GET');
+    $request->attributes->set(
+        DatabaseSessionSubscriber::REQUEST_ATTRIBUTE,
+        new SessionRecord(
+            'session-a',
+            new DateTimeImmutable('2026-06-08T10:00:00+00:00'),
+            new DateTimeImmutable('2026-06-08T11:00:00+00:00'),
+        ),
+    );
+
+    $response = $handler->handle($request);
+    $payload = json_decode((string) $response->getContent(), true);
+
+    assertSameValue(503, $response->getStatusCode(), 'OpenAI upstream status should be propagated.');
+    assertSameValue(['error' => 'OpenAI upstream error'], $payload, 'OpenAI details should not be exposed to the frontend.');
 });
 
 test('OpenAI request configuration defaults are applied when omitted', function (): void {

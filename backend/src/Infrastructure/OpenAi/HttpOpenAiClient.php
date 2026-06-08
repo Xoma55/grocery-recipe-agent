@@ -13,7 +13,7 @@ final readonly class HttpOpenAiClient implements OpenAiClientInterface
 
     public function createConversation(): string
     {
-        $response = $this->requestJson('/conversations', []);
+        $response = $this->requestJson('POST', '/conversations', []);
         $conversationId = $response['id'] ?? null;
 
         if (!is_string($conversationId) || $conversationId === '') {
@@ -25,9 +25,48 @@ final readonly class HttpOpenAiClient implements OpenAiClientInterface
 
     public function createStreamingResponse(string $conversationId, string $instructions, string $message): OpenAiResponseStream
     {
-        $stream = $this->openStream('/responses', $this->streamingResponseBody($conversationId, $instructions, $message));
+        $stream = $this->openStream('POST', '/responses', $this->streamingResponseBody($conversationId, $instructions, $message), 'text/event-stream');
 
         return new OpenAiResponseStream($stream);
+    }
+
+    public function listConversationMessages(string $conversationId): array
+    {
+        $messages = [];
+        $after = null;
+
+        do {
+            $path = '/conversations/' . rawurlencode($conversationId) . '/items';
+
+            if ($after !== null) {
+                $path .= '?after=' . rawurlencode($after);
+            }
+
+            $response = $this->requestJson('GET', $path);
+            $data = $response['data'] ?? null;
+
+            if (!is_array($data)) {
+                throw new OpenAiUpstreamException('OpenAI conversation items response did not include a data array.');
+            }
+
+            foreach ($data as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $message = $this->messageFromConversationItem($item);
+
+                if ($message !== null) {
+                    $messages[] = $message;
+                }
+            }
+
+            $hasMore = $response['has_more'] ?? false;
+            $lastId = $response['last_id'] ?? null;
+            $after = $hasMore === true && is_string($lastId) && $lastId !== '' ? $lastId : null;
+        } while ($after !== null);
+
+        return $messages;
     }
 
     /**
@@ -67,9 +106,9 @@ final readonly class HttpOpenAiClient implements OpenAiClientInterface
     /**
      * @return array<string, mixed>
      */
-    private function requestJson(string $path, array $body): array
+    private function requestJson(string $method, string $path, ?array $body = null): array
     {
-        $stream = $this->openStream($path, $body);
+        $stream = $this->openStream($method, $path, $body, 'application/json');
         $contents = stream_get_contents($stream);
 
         if ($contents === false) {
@@ -86,29 +125,91 @@ final readonly class HttpOpenAiClient implements OpenAiClientInterface
     }
 
     /**
+     * @param array<string, mixed> $item
+     */
+    private function messageFromConversationItem(array $item): ?OpenAiConversationMessage
+    {
+        if (($item['type'] ?? null) !== 'message') {
+            return null;
+        }
+
+        $role = $item['role'] ?? null;
+
+        if ($role !== 'user' && $role !== 'assistant') {
+            return null;
+        }
+
+        $content = $this->textFromContent($item['content'] ?? null);
+
+        if ($content === '') {
+            return null;
+        }
+
+        return new OpenAiConversationMessage($role, $content);
+    }
+
+    private function textFromContent(mixed $content): string
+    {
+        if (is_string($content)) {
+            return trim($content);
+        }
+
+        if (!is_array($content)) {
+            return '';
+        }
+
+        $parts = [];
+
+        foreach ($content as $part) {
+            if (is_string($part)) {
+                $parts[] = $part;
+                continue;
+            }
+
+            if (!is_array($part)) {
+                continue;
+            }
+
+            $type = $part['type'] ?? null;
+            $text = $part['text'] ?? null;
+
+            if (($type === 'input_text' || $type === 'output_text' || $type === 'text') && is_string($text)) {
+                $parts[] = $text;
+            }
+        }
+
+        return trim(implode("\n", $parts));
+    }
+
+    /**
      * @return resource
      */
-    private function openStream(string $path, array $body): mixed
+    private function openStream(string $method, string $path, ?array $body, string $accept): mixed
     {
         if (trim($this->configuration->apiKey) === '') {
             throw new \RuntimeException('OPENAI_API_KEY is not configured.');
         }
 
-        $payload = json_encode($body, JSON_THROW_ON_ERROR);
         $headers = [
             'Authorization: Bearer ' . $this->configuration->apiKey,
-            'Content-Type: application/json',
-            'Accept: text/event-stream',
+            'Accept: ' . $accept,
+        ];
+        $httpOptions = [
+            'method' => $method,
+            'ignore_errors' => true,
+            'timeout' => 60,
         ];
 
+        if ($body !== null) {
+            $payload = json_encode($body, JSON_THROW_ON_ERROR);
+            $headers[] = 'Content-Type: application/json';
+            $httpOptions['content'] = $payload;
+        }
+
+        $httpOptions['header'] = implode("\r\n", $headers);
+
         $context = stream_context_create([
-            'http' => [
-                'method' => 'POST',
-                'header' => implode("\r\n", $headers),
-                'content' => $payload,
-                'ignore_errors' => true,
-                'timeout' => 60,
-            ],
+            'http' => $httpOptions,
         ]);
 
         $stream = @fopen($this->url($path), 'rb', false, $context);

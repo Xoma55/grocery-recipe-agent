@@ -9,4 +9,9 @@ interface OpenAiClientInterface
     public function createConversation(): string;
 
     public function createStreamingResponse(string $conversationId, string $instructions, string $message): OpenAiResponseStream;
+
+    /**
+     * @return list<OpenAiConversationMessage>
+     */
+    public function listConversationMessages(string $conversationId): array;
 }

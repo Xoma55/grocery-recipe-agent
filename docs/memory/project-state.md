@@ -45,3 +45,11 @@
 - `OpenAiConfiguration` validates allowed reasoning effort, text verbosity, and positive integer max output tokens with clear fail-fast errors.
 - `/responses` request bodies now include configured `reasoning.effort`, `text.verbosity`, and `max_output_tokens` values.
 - Added regression coverage for defaults, valid configured values, invalid configuration failures, and generated Responses API payloads.
+
+2026-06-08: BE-9 completed.
+
+- Added `GET /api/chat/history` for loading message history for the current anonymous session.
+- The endpoint reads `conversation_id` from `chat_conversations` by current `session_id`; it does not accept or trust client-provided conversation IDs.
+- Missing session-to-conversation mapping returns `{"messages":[]}` without creating a new OpenAI conversation.
+- Added OpenAI Conversations API item listing through `GET /conversations/{conversation_id}/items` and normalizes user/assistant text messages for the frontend.
+- Added regression coverage for empty history, existing history, session isolation, and OpenAI upstream failure handling.
