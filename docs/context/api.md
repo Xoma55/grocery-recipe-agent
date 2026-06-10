@@ -34,7 +34,7 @@ fetch('/api/chat/history', {
 });
 ```
 
-For cross-origin frontend development, the request origin must match `CORS_ALLOW_ORIGIN`. The backend CORS configuration currently allows `Content-Type` and `Authorization` headers and `OPTIONS` / `POST` methods for `/api/` preflight requests.
+For cross-origin frontend development, the request origin must match `CORS_ALLOW_ORIGIN`. The backend CORS configuration currently allows credentialed requests with `Content-Type` and `Authorization` headers and `OPTIONS` / `GET` / `POST` methods for `/api/` preflight requests.
 
 ## Error Format
 

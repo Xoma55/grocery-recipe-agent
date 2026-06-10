@@ -75,3 +75,16 @@
 - Added `frontend/.env` with `FRONTEND_PORT` and `NEXT_PUBLIC_BACKEND_API_URL`.
 - Added a `npm run dev` startup script that reads `FRONTEND_PORT` from the environment or `frontend/.env`.
 - Added shared API configuration and client helpers that centralize `NEXT_PUBLIC_BACKEND_API_URL` usage and include backend session credentials by default.
+
+2026-06-10: FE-2 completed.
+
+- Replaced the frontend home page with the shopper-facing chat interface.
+- Added typed chat API helpers for `GET /chat/history`, `POST /chat`, and `POST /chat/reset` through the shared API layer with browser credentials preserved by `apiRequest`.
+- Implemented history loading, empty/loading/error states, optimistic user messages, SSE `delta`/`done`/`error` handling, duplicate-send prevention, and reset behavior without reading or writing the `grocery_session` cookie.
+- Added a responsive mobile-first chat layout with a visible top `New chat` action, scrollable message bubbles, pinned composer, keyboard submission, accessible labels, and focus restoration after send/reset.
+
+2026-06-10: CORS credentialed chat API fix.
+
+- Updated backend CORS configuration for `/api/` to allow credentialed cross-origin requests.
+- Added `GET` to allowed CORS methods so `GET /api/chat/history` works from the frontend.
+- Kept frontend requests centralized through `apiRequest`, which sends browser credentials by default without reading or writing the `grocery_session` cookie.
