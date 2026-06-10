@@ -66,3 +66,12 @@
 - Created `docs/context/api.md` documenting backend API endpoints: `POST /api/chat`, `GET /api/chat/history`, and `POST /api/chat/reset`.
 - Documented anonymous session handling through the `grocery_session` cookie, including request cookie examples, `Set-Cookie` behavior, expiration, missing/expired session replacement, and `credentials: 'include'` browser usage.
 - Captured endpoint request/response shapes, SSE events, status codes, error formats, and session-scoped conversation ownership rules.
+
+2026-06-10: FE-1 completed.
+
+- Initialized a Next.js 16 TypeScript frontend application under `frontend/`.
+- Enabled strict TypeScript and created the baseline Feature-Sliced Design structure: `app`, `widgets`, `features`, `entities`, `shared`, and `shared/api`.
+- Added React Query, Zod, and react-hook-form dependencies without adding a global client-side state library.
+- Added `frontend/.env` with `FRONTEND_PORT` and `NEXT_PUBLIC_BACKEND_API_URL`.
+- Added a `npm run dev` startup script that reads `FRONTEND_PORT` from the environment or `frontend/.env`.
+- Added shared API configuration and client helpers that centralize `NEXT_PUBLIC_BACKEND_API_URL` usage and include backend session credentials by default.

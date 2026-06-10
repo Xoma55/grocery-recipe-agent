@@ -1,0 +1,33 @@
+:root {
+  color: #1f2a1f;
+  background: #f8f3e8;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: radial-gradient(circle at top left, #fff7d7 0, transparent 35%), #f8f3e8;
+}
+
+main {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  padding: 48px 20px;
+}
+
+section {
+  border: 1px solid #d7c8a6;
+  border-radius: 28px;
+  padding: 32px;
+  background: rgba(255, 252, 244, 0.88);
+  box-shadow: 0 24px 70px rgba(64, 53, 28, 0.14);
+}
+
+p {
+  line-height: 1.6;
+}
