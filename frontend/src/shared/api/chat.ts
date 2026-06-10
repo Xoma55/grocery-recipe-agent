@@ -37,7 +37,7 @@ export async function getChatHistory(): Promise<ChatMessage[]> {
   }
 
   const payload: unknown = await response.json();
-  return chatHistorySchema.parse(payload).messages;
+  return chatHistorySchema.parse(payload).messages.toReversed();
 }
 
 export async function resetChat(): Promise<void> {
