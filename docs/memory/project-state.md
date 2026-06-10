@@ -60,3 +60,9 @@
 - The endpoint deletes only the current session's `chat_conversations` row, ignores client-provided conversation IDs, and returns `204 No Content`.
 - Reset does not call OpenAI; the next chat message recreates a new OpenAI conversation through the existing resolver flow.
 - Added regression coverage for mapping deletion, idempotent reset, session and cookie preservation, session isolation, empty history after reset, missing session handling, and next-message conversation recreation.
+
+2026-06-10: API documentation added.
+
+- Created `docs/context/api.md` documenting backend API endpoints: `POST /api/chat`, `GET /api/chat/history`, and `POST /api/chat/reset`.
+- Documented anonymous session handling through the `grocery_session` cookie, including request cookie examples, `Set-Cookie` behavior, expiration, missing/expired session replacement, and `credentials: 'include'` browser usage.
+- Captured endpoint request/response shapes, SSE events, status codes, error formats, and session-scoped conversation ownership rules.
