@@ -17,6 +17,8 @@ type UiMessage = ChatMessage & {
 };
 
 const historyQueryKey = ['chat-history'];
+const TYPEWRITER_INTERVAL_MS = 24;
+const TYPEWRITER_CHARS_PER_TICK = 4;
 
 export function ChatPage() {
   const queryClient = useQueryClient();
@@ -25,14 +27,27 @@ export function ChatPage() {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
+  const streamBufferRef = useRef('');
+  const streamTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamDrainResolversRef = useRef<Array<() => void>>([]);
+
+  useEffect(() => {
+    setHasHydrated(true);
+  }, []);
+
+  useEffect(() => () => clearTypewriter(), []);
 
   const historyQuery = useQuery({
     queryKey: historyQueryKey,
     queryFn: getChatHistory,
+    enabled: hasHydrated,
   });
+
+  const isHistoryLoading = hasHydrated && historyQuery.isLoading;
 
   useEffect(() => {
     if (historyQuery.data) {
@@ -47,8 +62,8 @@ export function ChatPage() {
   }, [messages]);
 
   const canSend = useMemo(
-    () => draft.trim().length > 0 && !historyQuery.isLoading && !isSending && !isResetting,
-    [draft, historyQuery.isLoading, isResetting, isSending],
+    () => draft.trim().length > 0 && !isHistoryLoading && !isSending && !isResetting,
+    [draft, isHistoryLoading, isResetting, isSending],
   );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -72,6 +87,7 @@ export function ChatPage() {
 
     try {
       await sendChatMessage(text, (streamEvent) => handleStreamEvent(streamEvent, assistantId));
+      await flushQueuedAssistantText(assistantId);
       setMessages((current) =>
         current.map((message) =>
           message.id === assistantId ? { ...message, pending: false } : message,
@@ -79,6 +95,7 @@ export function ChatPage() {
       );
       await queryClient.invalidateQueries({ queryKey: historyQueryKey });
     } catch (error) {
+      await flushQueuedAssistantText(assistantId);
       setStreamError(getErrorMessage(error, 'Le message n’a pas pu être envoyé.'));
       setMessages((current) =>
         current.map((message) =>
@@ -107,6 +124,7 @@ export function ChatPage() {
 
     try {
       await resetChat();
+      clearTypewriter();
       setMessages([]);
       queryClient.setQueryData(historyQueryKey, []);
       shouldStickToBottomRef.current = true;
@@ -120,22 +138,11 @@ export function ChatPage() {
 
   function handleStreamEvent(streamEvent: StreamEvent, assistantId: string) {
     if (streamEvent.type === 'delta') {
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantId
-            ? { ...message, content: `${message.content}${streamEvent.delta}` }
-            : message,
-        ),
-      );
+      queueAssistantText(assistantId, streamEvent.delta);
       return;
     }
 
     if (streamEvent.type === 'done') {
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantId ? { ...message, pending: false } : message,
-        ),
-      );
       return;
     }
 
@@ -145,6 +152,60 @@ export function ChatPage() {
         message.id === assistantId ? { ...message, pending: false } : message,
       ),
     );
+  }
+
+  function queueAssistantText(assistantId: string, delta: string) {
+    streamBufferRef.current += delta;
+    startTypewriter(assistantId);
+  }
+
+  function startTypewriter(assistantId: string) {
+    if (streamTimerRef.current !== null) {
+      return;
+    }
+
+    streamTimerRef.current = setInterval(() => {
+      const nextChunk = streamBufferRef.current.slice(0, TYPEWRITER_CHARS_PER_TICK);
+      streamBufferRef.current = streamBufferRef.current.slice(TYPEWRITER_CHARS_PER_TICK);
+
+      if (nextChunk) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantId
+              ? { ...message, content: `${message.content}${nextChunk}` }
+              : message,
+          ),
+        );
+      }
+
+      if (!streamBufferRef.current) {
+        clearTypewriter();
+      }
+    }, TYPEWRITER_INTERVAL_MS);
+  }
+
+  function clearTypewriter() {
+    if (streamTimerRef.current !== null) {
+      clearInterval(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
+
+    const resolvers = streamDrainResolversRef.current;
+    streamDrainResolversRef.current = [];
+    resolvers.forEach((resolve) => resolve());
+  }
+
+  function flushQueuedAssistantText(assistantId: string): Promise<void> {
+    if (!streamBufferRef.current) {
+      clearTypewriter();
+      return Promise.resolve();
+    }
+
+    startTypewriter(assistantId);
+
+    return new Promise((resolve) => {
+      streamDrainResolversRef.current.push(resolve);
+    });
   }
 
   function handleScroll() {
@@ -168,7 +229,7 @@ export function ChatPage() {
     });
   }
 
-  const showEmptyState = !historyQuery.isLoading && messages.length === 0;
+  const showEmptyState = hasHydrated && !isHistoryLoading && messages.length === 0;
 
   return (
     <main className="chat-shell">
@@ -190,7 +251,7 @@ export function ChatPage() {
         </header>
 
         <div className="message-list" ref={scrollRef} onScroll={handleScroll} aria-live="polite">
-          {historyQuery.isLoading ? <StatusCard text="Chargement de votre conversation..." /> : null}
+          {isHistoryLoading ? <StatusCard text="Chargement de votre conversation..." /> : null}
           {historyQuery.isError ? (
             <StatusCard text={getErrorMessage(historyQuery.error, 'Impossible de charger votre conversation.')} tone="error" />
           ) : null}
@@ -218,7 +279,7 @@ export function ChatPage() {
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Ex. Je veux cuisiner avec du poulet et des courgettes..."
             rows={2}
-            disabled={historyQuery.isLoading || isSending || isResetting}
+            disabled={isHistoryLoading || isSending || isResetting}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
