@@ -53,3 +53,10 @@
 - Missing session-to-conversation mapping returns `{"messages":[]}` without creating a new OpenAI conversation.
 - Added OpenAI Conversations API item listing through `GET /conversations/{conversation_id}/items` and normalizes user/assistant text messages for the frontend.
 - Added regression coverage for empty history, existing history, session isolation, and OpenAI upstream failure handling.
+
+2026-06-10: BE-10 completed.
+
+- Added `POST /api/chat/reset` for starting a new chat without resetting the anonymous application session.
+- The endpoint deletes only the current session's `chat_conversations` row, ignores client-provided conversation IDs, and returns `204 No Content`.
+- Reset does not call OpenAI; the next chat message recreates a new OpenAI conversation through the existing resolver flow.
+- Added regression coverage for mapping deletion, idempotent reset, session and cookie preservation, session isolation, empty history after reset, missing session handling, and next-message conversation recreation.

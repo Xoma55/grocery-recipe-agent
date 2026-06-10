@@ -69,6 +69,14 @@ final class ChatConversationRepository
         return $record;
     }
 
+    public function deleteBySessionId(string $sessionId): void
+    {
+        $this->initializeSchema();
+
+        $statement = $this->connection()->prepare('DELETE FROM chat_conversations WHERE session_id = :session_id');
+        $statement->execute(['session_id' => $sessionId]);
+    }
+
     /**
      * @return list<ChatConversationRecord>
      */

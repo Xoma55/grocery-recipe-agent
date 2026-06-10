@@ -15,20 +15,30 @@ final class FakeOpenAiClient implements OpenAiClientInterface
     /**
      * @var list<string>
      */
+    public array $createdConversationIds = [];
+
+    /**
+     * @var list<string>
+     */
     public array $listedConversationIds = [];
 
     /**
      * @param array<string, list<OpenAiConversationMessage>> $messagesByConversationId
+     * @param list<string> $conversationIdsToCreate
      */
     public function __construct(
         private readonly array $messagesByConversationId = [],
         private readonly ?OpenAiUpstreamException $historyException = null,
+        private readonly array $conversationIdsToCreate = ['conv_created_by_fake'],
     ) {
     }
 
     public function createConversation(): string
     {
-        return 'conv_created_by_fake';
+        $conversationId = $this->conversationIdsToCreate[count($this->createdConversationIds)] ?? 'conv_created_by_fake';
+        $this->createdConversationIds[] = $conversationId;
+
+        return $conversationId;
     }
 
     public function createStreamingResponse(string $conversationId, string $instructions, string $message): OpenAiResponseStream

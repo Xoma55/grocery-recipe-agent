@@ -9,6 +9,7 @@ use App\Infrastructure\Session\SessionManager;
 use App\Infrastructure\Session\SessionRepository;
 use App\Infrastructure\Session\SqliteConnectionFactory;
 use App\Infrastructure\Chat\ChatConversationRepository;
+use App\Infrastructure\Chat\ChatConversationResolver;
 use App\Infrastructure\OpenAi\OpenAiConversationMessage;
 use App\Infrastructure\OpenAi\HttpOpenAiClient;
 use App\Infrastructure\OpenAi\OpenAiConfiguration;
@@ -18,6 +19,7 @@ use App\Tests\Support\DummyKernel;
 use App\Tests\Support\FakeOpenAiClient;
 use App\Tests\Support\MutableClock;
 use App\UI\Chat\ChatHistoryRequestHandler;
+use App\UI\Chat\ChatResetRequestHandler;
 use App\UI\EventSubscriber\DatabaseSessionSubscriber;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -378,6 +380,140 @@ test('chat history returns upstream status when OpenAI history loading fails', f
 
     assertSameValue(503, $response->getStatusCode(), 'OpenAI upstream status should be propagated.');
     assertSameValue(['error' => 'OpenAI upstream error'], $payload, 'OpenAI details should not be exposed to the frontend.');
+});
+
+test('chat reset deletes only the current session conversation mapping', function (): void {
+    $databasePath = tempDatabasePath();
+    $repository = chatConversationRepository($databasePath);
+    $now = new DateTimeImmutable('2026-06-08T10:00:00+00:00');
+    $repository->save('session-a', 'conv_a', $now);
+    $repository->save('session-b', 'conv_b', $now);
+    $handler = new ChatResetRequestHandler($repository, new NullLogger());
+    $request = Request::create('/api/chat/reset?conversation_id=conv_b', 'POST', [
+        'conversation_id' => 'conv_b',
+    ], [], [], [
+        'HTTP_X_CONVERSATION_ID' => 'conv_b',
+    ]);
+    $request->attributes->set(
+        DatabaseSessionSubscriber::REQUEST_ATTRIBUTE,
+        new SessionRecord(
+            'session-a',
+            $now,
+            new DateTimeImmutable('2026-06-08T11:00:00+00:00'),
+        ),
+    );
+
+    $response = $handler->handle($request);
+
+    assertSameValue(204, $response->getStatusCode(), 'Reset should return no-content success.');
+    assertSameValue(null, $repository->findBySessionId('session-a'), 'Current session conversation mapping should be deleted.');
+    assertSameValue('conv_b', $repository->findBySessionId('session-b')?->conversationId, 'Another session mapping must remain untouched.');
+});
+
+test('chat reset succeeds when no conversation mapping exists', function (): void {
+    $databasePath = tempDatabasePath();
+    $repository = chatConversationRepository($databasePath);
+    $handler = new ChatResetRequestHandler($repository, new NullLogger());
+    $request = Request::create('/api/chat/reset', 'POST');
+    $request->attributes->set(
+        DatabaseSessionSubscriber::REQUEST_ATTRIBUTE,
+        new SessionRecord(
+            'session-without-conversation',
+            new DateTimeImmutable('2026-06-08T10:00:00+00:00'),
+            new DateTimeImmutable('2026-06-08T11:00:00+00:00'),
+        ),
+    );
+
+    $response = $handler->handle($request);
+
+    assertSameValue(204, $response->getStatusCode(), 'Reset without a mapping should be idempotent.');
+    assertSameValue([], $repository->all(), 'Reset without a mapping should not create conversation records.');
+});
+
+test('chat reset preserves the application session and cookie value', function (): void {
+    $databasePath = tempDatabasePath();
+    $clock = new MutableClock(new DateTimeImmutable('2026-06-08T10:00:00+00:00'));
+    $sessionManager = manager($databasePath, $clock, 60);
+    $session = $sessionManager->resolve(null);
+    $conversationRepository = chatConversationRepository($databasePath);
+    $conversationRepository->save($session->id, 'conv_to_reset', $clock->now());
+    $subscriber = new DatabaseSessionSubscriber($sessionManager);
+    $handler = new ChatResetRequestHandler($conversationRepository, new NullLogger());
+    $kernel = new DummyKernel();
+    $request = Request::create('/api/chat/reset', 'POST', [], [
+        DatabaseSessionSubscriber::COOKIE_NAME => $session->id,
+    ]);
+
+    $subscriber->onKernelRequest(new RequestEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST));
+    $response = $handler->handle($request);
+    $subscriber->onKernelResponse(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+
+    $cookie = $response->headers->getCookies()[0] ?? null;
+
+    assertSameValue(204, $response->getStatusCode(), 'Reset should succeed.');
+    assertSameValue($session->id, repository($databasePath)->find($session->id)?->id, 'Reset must not delete or replace the application session.');
+    assertTrueValue($cookie !== null, 'Reset response should keep the session cookie managed by the subscriber.');
+    assertSameValue($session->id, $cookie->getValue(), 'Reset must not replace the session cookie value.');
+});
+
+test('chat history is empty for the same session after chat reset', function (): void {
+    $databasePath = tempDatabasePath();
+    $repository = chatConversationRepository($databasePath);
+    $now = new DateTimeImmutable('2026-06-08T10:00:00+00:00');
+    $session = new SessionRecord('session-a', $now, new DateTimeImmutable('2026-06-08T11:00:00+00:00'));
+    $repository->save($session->id, 'conv_a', $now);
+    $resetHandler = new ChatResetRequestHandler($repository, new NullLogger());
+    $historyHandler = new ChatHistoryRequestHandler($repository, new FakeOpenAiClient(), new NullLogger());
+    $resetRequest = Request::create('/api/chat/reset', 'POST');
+    $resetRequest->attributes->set(DatabaseSessionSubscriber::REQUEST_ATTRIBUTE, $session);
+
+    $resetResponse = $resetHandler->handle($resetRequest);
+
+    $historyRequest = Request::create('/api/chat/history', 'GET');
+    $historyRequest->attributes->set(DatabaseSessionSubscriber::REQUEST_ATTRIBUTE, $session);
+    $historyResponse = $historyHandler->handle($historyRequest);
+    $payload = json_decode((string) $historyResponse->getContent(), true);
+
+    assertSameValue(204, $resetResponse->getStatusCode(), 'Reset should succeed before history reload.');
+    assertSameValue(200, $historyResponse->getStatusCode(), 'History should remain loadable after reset.');
+    assertSameValue(['messages' => []], $payload, 'History should be empty after reset removes the mapping.');
+});
+
+test('next chat conversation resolution creates a new OpenAI conversation after reset', function (): void {
+    $databasePath = tempDatabasePath();
+    $repository = chatConversationRepository($databasePath);
+    $clock = new MutableClock(new DateTimeImmutable('2026-06-08T10:00:00+00:00'));
+    $repository->save('session-a', 'conv_old', $clock->now());
+    $resetHandler = new ChatResetRequestHandler($repository, new NullLogger());
+    $resetRequest = Request::create('/api/chat/reset', 'POST');
+    $resetRequest->attributes->set(
+        DatabaseSessionSubscriber::REQUEST_ATTRIBUTE,
+        new SessionRecord(
+            'session-a',
+            $clock->now(),
+            new DateTimeImmutable('2026-06-08T11:00:00+00:00'),
+        ),
+    );
+    $openAiClient = new FakeOpenAiClient([], null, ['conv_new']);
+    $resolver = new ChatConversationResolver($repository, $openAiClient, $clock);
+
+    $resetResponse = $resetHandler->handle($resetRequest);
+    $conversationId = $resolver->resolveConversationId('session-a');
+
+    assertSameValue(204, $resetResponse->getStatusCode(), 'Reset should succeed before creating a new conversation.');
+    assertSameValue('conv_new', $conversationId, 'The next chat request should receive a newly created conversation id.');
+    assertSameValue(['conv_new'], $openAiClient->createdConversationIds, 'Reset itself must not call OpenAI; creation happens on the next conversation resolution.');
+    assertSameValue('conv_new', $repository->findBySessionId('session-a')?->conversationId, 'The new conversation mapping should be stored for the same session.');
+});
+
+test('chat reset returns internal error when application session is missing', function (): void {
+    $handler = new ChatResetRequestHandler(chatConversationRepository(tempDatabasePath()), new NullLogger());
+    $request = Request::create('/api/chat/reset', 'POST');
+
+    $response = $handler->handle($request);
+
+    assertSameValue(500, $response->getStatusCode(), 'Reset without a resolved session should fail as an internal error.');
+    assertSameValue('{"error":"Internal server error"}', (string) $response->getContent(), 'Internal details should not be exposed.');
 });
 
 test('OpenAI request configuration defaults are applied when omitted', function (): void {
