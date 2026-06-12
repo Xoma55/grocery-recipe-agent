@@ -88,3 +88,9 @@
 - Updated backend CORS configuration for `/api/` to allow credentialed cross-origin requests.
 - Added `GET` to allowed CORS methods so `GET /api/chat/history` works from the frontend.
 - Kept frontend requests centralized through `apiRequest`, which sends browser credentials by default without reading or writing the `grocery_session` cookie.
+
+2026-06-12: README development documentation added.
+
+- Expanded `README.md` with a short English overview of the backend and frontend.
+- Documented local developer setup, required runtime tools, environment files, SQLite schema initialization, and separate backend/frontend dev commands.
+- Added useful verification commands for backend tests and frontend type checking.
